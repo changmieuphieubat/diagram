@@ -1,0 +1,128 @@
+## Create Virtual Account
+
+- Mô tả: Tạo tài khoản định danh
+- Project: Payment platform (OCB Open API) - Squad 36
+- Sprint: 2.1
+- BA: Hieu, Luu Huynh Trung (hieulht@ocb.com.vn); Khoa, Tran Cao Viet (khoatcv@ocb.com.vn)
+
+## Sequence diagrams
+```mermaid
+sequenceDiagram
+	apic ->> virtual_account: /virtual-account/create
+	virtual_account ->> esb_adapter: /esb/db/validate-virtual-account
+	esb_adapter ->> esbdata_db: Call IS_VIRTUAL_ACCOUNT_VALIDATION
+	esbdata_db ->> esb_adapter: return result
+	alt is error (result.code != '00')
+		esb_adapter ->> virtual_account: result error
+		virtual_account ->> apic: return error
+	else is success
+	    par insert apic log
+	        virtual_account ->> esb_adapter: /esb/db/insert-apic-transaction
+        and insert virtual account
+            virtual_account ->> ocbchannel_adapter: /ocbchannel/db/insert-virtual-account
+            ocbchannel_adapter ->> virtual_account: return result
+            alt is error (result.code != '00')
+                virtual_account ->> apic: return error
+            else is success
+                virtual_account ->> t24_adapter: Call T24 version: /t24/virtual-account/create
+                t24_adapter ->> virtual_account: return result
+                
+                virtual_account ->> esb_adapter: /esb/db/update-virtual-account-info
+                esb_adapter ->> esbdata_db: Call IS_UPDATE_VIRTUAL_ACCOUNT_INFO
+                esbdata_db ->> esb_adapter: return result
+                esb_adapter ->> virtual_account: return result
+                virtual_account ->> apic: return result
+            end
+	    end
+	end
+```
+
+## Mô tả chi tiết các bước xử lý:
+- Bước 1: Gọi esb_adapter => /esb/db/validate-virtual-account => Call SP: IS_VIRTUAL_ACCOUNT_VALIDATION
+    - Thông tin store procedure
+      - INPUT:
+      
+        ```xml
+        <INPUT>
+          <userName>string</userName>
+          <vaId>string</vaId>
+          <subId>string</subId>
+          <bankAccountNumber>string</bankAccountNumber>
+          <action>CREATE/MODIFY</action>
+        </INPUT>
+        ```
+      - OUTPUT:
+      
+        ```xml
+        <result>
+          <resultCode>00</resultCode>
+          <resultMsg>Success</resultMsg>
+          <details><details>
+        </result>
+          
+- Bước 2: Nếu result.code != '00' ? trả về lỗi : bước 3
+
+- Bước 3: Gọi esb_adapter => /esb/db/insert-apic-transaction => insert request, response vào table APIC_TRANSACTIONS
+
+- Bước 4: Gọi ocbchannel_adapter => /ocbchannel/db/insert-virtual-account => insert virtual account vào table VIRTUAL_ACCOUNT_LIST
+
+    ````SQL
+     INSERT INTO VIRTUAL_ACCOUNT_LIST@OCBCHANNEL(ID, SERIAL_NO, MASTER_CODE, CIF, EXTENSION_CODE, VIRTUAL_ACCOUNT, VIRTUAL_ACCOUNT_NAME, 
+        VIRTUAL_ACCOUNT_STATUS, BANK_ACCOUNT, CHANNEL, DATETIME_CREATED, USER_CREATED, DATETIME_APPROVED, USER_APPROVED1, 
+        USER_APPROVED2, USER_APPROVED3, USER_APPROVED4, USER_APPROVED5, STATUS, BRANCH_CODE, IS_PROCESSING)
+    SELECT
+        *********
+    FROM VIRTUAL_ACCOUNT_MASTER_CODE@OCBCHANNEL T
+    WHERE T.MASTER_CODE = $masterCode
+    AND T.CIF = $CIF NUM
+    AND T.STATUS = 1 
+    AND T.IS_PROCESSING = 0;
+    ````
+    Nếu insert thành công ? bước 4 : trả về lỗi
+
+- Bước 4: Gọi T24 Adapter => /t24/virtual-account/upsert
+
+- Bước 5: Gọi esb_adapter => /esb/db/update-virtual-account-info => Call SP: IS_UPDATE_VIRTUAL_ACCOUNT_INFO
+    - Thông tin store procedure
+        - INPUT:
+      
+          ```xml
+          <INPUT>
+            <virtualAccount>string</virtualAccount>
+            <bankAccountNumber>string</bankAccountNumber>
+            <virtualAccountStatus>string</virtualAccountStatus>
+          </INPUT>
+          ```
+        - OUTPUT:
+      
+          ```xml
+          <result>
+            <resultCode>00</resultCode>
+            <resultMsg>Success</resultMsg>
+            <virtualAccount>string</virtualAccount>
+          </result>
+
+
+### Result code:
+- 00: Thành công
+- 01: Data not found / Không tìm thấy dữ liệu
+- 2007: Thông tin request không hợp lệ
+- 9999: Lỗi nghi vấn
+- 99: Lỗi không xác định
+
+### Note:
+````
+- Lưu ý dùng User kết nối DB riêng cho hệ thống NewMCS đến OCBCHANNEL DB và ESBDATA DB
+- Thông tin config kết nối DB trong file .yaml của channel-adapter và esb-adapter như sau:
+  datasource:
+  ocbchannel/esbdata:
+  host:
+  port:
+  service-name:
+  username:
+  password:
+  max-pool-size:
+  connection-timeout:
+  idle-timeout:
+  max-life-time
+````
