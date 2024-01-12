@@ -64,6 +64,19 @@ sequenceDiagram
 
 - Bước 3: Gọi esb_adapter => /esb/db/insert-apic-transaction => insert request, response vào table APIC_TRANSACTIONS
 
+    ```
+    Mapping APIC_TRANSACTIONS:
+    TRANS_ID => sid
+    CLIENT_TRANS_ID => cid
+    CLIENT_TIMESTAMP => cts
+    USER_ID => userName
+    REQUEST_DATA => request body
+    RESPONSE_DATA => response body
+    RESPONSE_CODE => result.code
+    RESPONSE_DESC => result.message
+    API_NAME => createVirtualAccount/modifyVirtualAccount
+    ```
+
 - Bước 4: Gọi ocbchannel_adapter => /ocbchannel/db/insert-virtual-account => insert virtual account vào table VIRTUAL_ACCOUNT_LIST
 
     ````SQL
