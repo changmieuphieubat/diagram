@@ -5,6 +5,13 @@
 - Sprint: 2.1
 - BA: Hieu, Luu Huynh Trung (hieulht@ocb.com.vn); Khoa, Tran Cao Viet (khoatcv@ocb.com.vn)
 
+```plantuml
+@startuml
+Bob -> Alice : hello
+@enduml
+```
+
+
 ## Sequence diagrams
 ```mermaid
 sequenceDiagram
